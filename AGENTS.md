@@ -15,7 +15,7 @@ Web app for tracking underground clothing shops. Users paste a shop URL, we snap
 ## Stack
 
 - Next.js 16 App Router, TypeScript, Tailwind
-- Prisma + SQLite (`prisma/dev.db`)
+- Prisma + Supabase Postgres (local via `supabase start`, or hosted)
 - NextAuth credentials (email + password + username)
 
 ## Key paths
@@ -31,12 +31,17 @@ Web app for tracking underground clothing shops. Users paste a shop URL, we snap
 ## Local commands
 
 ```bash
+cp .env.example .env   # then fill secrets / DB URLs (or use supabase start output)
+npx supabase start     # local Postgres (needs Docker)
 npm install
+npm run db:generate
 npm run db:push
 npm run dev
 npm run lint
 npm run poll   # refresh catalogs (dev server must be running)
 ```
+
+Point `DATABASE_URL` / `DIRECT_URL` at local Supabase (`supabase status`) or a hosted project (Dashboard → Connect).
 
 ## Cursor Cloud specific instructions
 
@@ -62,7 +67,8 @@ Add these in [Cloud Agents → Secrets](https://cursor.com/dashboard/cloud-agent
 
 | Variable | Example / notes |
 | --- | --- |
-| `DATABASE_URL` | `file:./prisma/dev.db` |
+| `DATABASE_URL` | Supabase pooler URL (`:6543`, `?pgbouncer=true`) |
+| `DIRECT_URL` | Supabase session/direct URL (`:5432`) for Prisma migrations |
 | `AUTH_SECRET` | Random string, 32+ chars |
 | `AUTH_URL` | `http://localhost:3000` on the VM |
 | `CRON_SECRET` | Any secret string for `/api/cron/poll` |
