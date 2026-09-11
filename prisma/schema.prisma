@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  watches      Watch[]
+}
+
+model Shop {
+  id            String    @id @default(cuid())
+  host          String    @unique
+  name          String
+  url           String
+  sourceType    String
+  status        String    @default("active")
+  lastCheckedAt DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  products      Product[]
+  watches       Watch[]
+}
+
+model Watch {
+  id        String   @id @default(cuid())
+  userId    String
+  shopId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  shopId      String
+  externalId  String
+  title       String
+  productUrl  String
+  imageUrl    String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  isBaseline  Boolean  @default(true)
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, externalId])
+  @@index([shopId, isBaseline, firstSeenAt])
+}
