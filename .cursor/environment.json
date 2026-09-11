@@ -1,0 +1,9 @@
+{
+  "install": "npm ci && npm run db:generate && npm run db:push",
+  "terminals": [
+    {
+      "name": "next-dev",
+      "command": "npm run dev -- --hostname 0.0.0.0 --port 3000"
+    }
+  ]
+}
