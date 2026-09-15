@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "setup": "node scripts/dev-setup.mjs",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:supabase": "npx supabase start",
     "poll": "node scripts/poll.mjs"
   },
   "dependencies": {
