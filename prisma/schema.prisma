@@ -18,17 +18,23 @@ model User {
 }
 
 model Shop {
-  id            String    @id @default(cuid())
-  host          String    @unique
-  name          String
-  url           String
-  sourceType    String
-  status        String    @default("active")
-  lastCheckedAt DateTime?
-  lastError     String?
-  createdAt     DateTime  @default(now())
-  products      Product[]
-  watches       Watch[]
+  id             String    @id @default(cuid())
+  host           String    @unique
+  name           String
+  url            String
+  sourceType     String
+  sourceOrder    String    @default("unknown")
+  status         String    @default("active")
+  scanStartedAt  DateTime?
+  baselineAt     DateTime?
+  previewBuiltAt DateTime?
+  lastCheckedAt  DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  products       Product[]
+  watches        Watch[]
+
+  @@index([status, scanStartedAt])
 }
 
 model Watch {
@@ -43,17 +49,22 @@ model Watch {
 }
 
 model Product {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   shopId      String
   externalId  String
   title       String
   productUrl  String
   imageUrl    String?
-  firstSeenAt DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
-  isBaseline  Boolean  @default(true)
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  publishedAt DateTime?
+  sourceIndex Int?
+  inStock     Boolean?
+  previewRank Int?
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  isBaseline  Boolean   @default(true)
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
   @@unique([shopId, externalId])
   @@index([shopId, isBaseline, firstSeenAt])
+  @@index([shopId, previewRank])
 }

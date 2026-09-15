@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { unwatchAction } from "@/app/actions";
+import { retryShopAction, unwatchAction } from "@/app/actions";
 import { Header } from "@/components/header";
 import { TrackForm } from "@/components/track-form";
 import { prisma } from "@/lib/prisma";
@@ -41,7 +41,9 @@ export default async function ShopsPage() {
                   <p className="font-medium">{watch.shop.name}</p>
                   <p className="text-sm text-zinc-500">{watch.shop.host}</p>
                   <p className="mt-1 text-xs uppercase tracking-wide text-zinc-600">
-                    {watch.shop.sourceType}
+                    {watch.shop.status === "scanning"
+                      ? "scanning…"
+                      : watch.shop.sourceType}
                     {watch.shop.status === "unsupported"
                       ? " · could not refresh"
                       : ""}
@@ -53,15 +55,28 @@ export default async function ShopsPage() {
                     <p className="mt-1 text-xs text-red-400">{watch.shop.lastError}</p>
                   ) : null}
                 </div>
-                <form action={unwatchAction}>
-                  <input type="hidden" name="shopId" value={watch.shopId} />
-                  <button
-                    type="submit"
-                    className="text-sm text-zinc-400 hover:text-white"
-                  >
-                    Untrack
-                  </button>
-                </form>
+                <div className="flex items-center gap-4">
+                  {watch.shop.status === "unsupported" ? (
+                    <form action={retryShopAction}>
+                      <input type="hidden" name="url" value={watch.shop.url} />
+                      <button
+                        type="submit"
+                        className="text-sm text-zinc-400 hover:text-white"
+                      >
+                        Retry
+                      </button>
+                    </form>
+                  ) : null}
+                  <form action={unwatchAction}>
+                    <input type="hidden" name="shopId" value={watch.shopId} />
+                    <button
+                      type="submit"
+                      className="text-sm text-zinc-400 hover:text-white"
+                    >
+                      Untrack
+                    </button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>

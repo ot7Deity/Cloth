@@ -3,10 +3,12 @@
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { auth, signIn, signOut } from "@/auth";
-import { probeCatalog } from "@/lib/catalog";
-import { persistCatalog } from "@/lib/poll";
+import { normalizeShopUrl } from "@/lib/catalog";
+import { importShop } from "@/lib/poll";
 import { prisma } from "@/lib/prisma";
+import { claimShopForScan } from "@/lib/shop-claim";
 
 function usernameOk(username: string) {
   return /^[a-zA-Z0-9_]{3,20}$/.test(username);
@@ -98,53 +100,38 @@ export async function addShopAction(formData: FormData) {
     return { error: "Paste a shop URL." };
   }
 
+  let url: URL;
   try {
-    const probed = await probeCatalog(rawUrl);
-    const shop = await prisma.shop.upsert({
-      where: { host: probed.host },
-      create: {
-        host: probed.host,
-        name: probed.result.shopName,
-        url: probed.pageUrl,
-        sourceType: probed.result.sourceType,
-        status: "active",
-        lastCheckedAt: new Date(),
-      },
-      update: {
-        name: probed.result.shopName,
-        url: probed.pageUrl,
-        sourceType: probed.result.sourceType,
-        status: "active",
-        lastCheckedAt: new Date(),
-        lastError: null,
-      },
-    });
-
-    await persistCatalog(shop.id, probed.result.products);
-
-    await prisma.watch.upsert({
-      where: {
-        userId_shopId: { userId: session.user.id, shopId: shop.id },
-      },
-      create: { userId: session.user.id, shopId: shop.id },
-      update: {},
-    });
-
-    revalidatePath("/");
-    revalidatePath("/shops");
-    return {
-      ok: true,
-      name: probed.result.shopName,
-      count: probed.result.products.length,
-    };
-  } catch (error) {
-    return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Could not read that site.",
-    };
+    url = normalizeShopUrl(rawUrl);
+  } catch {
+    return { error: "That does not look like a valid URL." };
   }
+
+  const host = url.hostname.toLowerCase();
+  const { shop, needsScan } = await claimShopForScan(host, url.toString());
+
+  await prisma.watch.upsert({
+    where: {
+      userId_shopId: { userId: session.user.id, shopId: shop.id },
+    },
+    create: { userId: session.user.id, shopId: shop.id },
+    update: {},
+  });
+
+  if (needsScan) {
+    after(() => importShop(shop.id));
+  }
+
+  revalidatePath("/");
+  revalidatePath("/shops");
+
+  return {
+    ok: true as const,
+    shopId: shop.id,
+    host,
+    name: shop.name,
+    status: needsScan ? ("scanning" as const) : (shop.status as "scanning" | "active" | "unsupported"),
+  };
 }
 
 export async function unwatchAction(formData: FormData) {
@@ -157,4 +144,13 @@ export async function unwatchAction(formData: FormData) {
   });
   revalidatePath("/");
   revalidatePath("/shops");
+}
+
+/**
+ * Thin wrapper so a plain <form action={...}> (no useActionState, return
+ * value unused) can trigger a rescan without a type mismatch against
+ * addShopAction's discriminated-union return value.
+ */
+export async function retryShopAction(formData: FormData): Promise<void> {
+  await addShopAction(formData);
 }

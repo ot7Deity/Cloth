@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { Header } from "@/components/header";
 import { ProductCard } from "@/components/product-card";
+import { ShopPreviewRow } from "@/components/shop-preview-row";
 import { TrackForm } from "@/components/track-form";
 import { prisma } from "@/lib/prisma";
 
@@ -56,17 +57,36 @@ export default async function Home({
   const activeFilter =
     shopFilter && shopIds.includes(shopFilter) ? shopFilter : undefined;
 
-  const products = shopIds.length
-    ? await prisma.product.findMany({
-        where: {
-          shopId: activeFilter ? activeFilter : { in: shopIds },
-          isBaseline: false,
-        },
-        include: { shop: true },
-        orderBy: { firstSeenAt: "desc" },
-        take: 60,
-      })
-    : [];
+  // With no filter, watches[0] is the most recently tracked shop (watches
+  // are ordered createdAt desc above) — right after tracking, that is the
+  // shop the preview row should spotlight.
+  const previewShopId = activeFilter ?? watches[0]?.shopId;
+  const previewWatch = watches.find((w) => w.shopId === previewShopId);
+
+  const [products, previewProducts] = await Promise.all([
+    shopIds.length
+      ? prisma.product.findMany({
+          where: {
+            shopId: activeFilter ? activeFilter : { in: shopIds },
+            isBaseline: false,
+          },
+          include: { shop: true },
+          orderBy: [
+            { firstSeenAt: "desc" },
+            { publishedAt: { sort: "desc", nulls: "last" } },
+            { id: "desc" },
+          ],
+          take: 60,
+        })
+      : Promise.resolve([]),
+    previewShopId
+      ? prisma.product.findMany({
+          where: { shopId: previewShopId, previewRank: { not: null } },
+          orderBy: { previewRank: "asc" },
+          take: 5,
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -107,6 +127,20 @@ export default async function Home({
               </Link>
             ))}
           </div>
+        ) : null}
+
+        {previewWatch ? (
+          <ShopPreviewRow
+            shopName={previewWatch.shop.name}
+            status={previewWatch.shop.status as "scanning" | "active" | "unsupported"}
+            lastError={previewWatch.shop.lastError}
+            products={previewProducts.map((p) => ({
+              id: p.id,
+              title: p.title,
+              productUrl: p.productUrl,
+              imageUrl: p.imageUrl,
+            }))}
+          />
         ) : null}
 
         {products.length === 0 ? (

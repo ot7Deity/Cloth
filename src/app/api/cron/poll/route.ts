@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { pollAllShops } from "@/lib/poll";
+import { pollAllShops, sweepStuckScans } from "@/lib/poll";
 
 export async function GET(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get("secret");
@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await pollAllShops();
-  return NextResponse.json({ ok: true, ...result });
+  const swept = await sweepStuckScans();
+  const polled = await pollAllShops();
+  return NextResponse.json({ ok: true, swept, polled });
 }
