@@ -16,7 +16,8 @@ type ProductCardProps = {
   shopName: string;
   productUrl: string;
   imageUrl: string | null;
-  firstSeenAt: Date;
+  firstSeenAt?: Date | null;
+  footnote?: string;
 };
 
 export function ProductCard({
@@ -25,6 +26,7 @@ export function ProductCard({
   productUrl,
   imageUrl,
   firstSeenAt,
+  footnote,
 }: ProductCardProps) {
   return (
     <a
@@ -54,7 +56,11 @@ export function ProductCard({
         <h2 className="text-sm font-medium leading-snug text-zinc-100 group-hover:underline">
           {title}
         </h2>
-        <p className="text-xs text-zinc-500">{timeAgo(firstSeenAt)}</p>
+        {firstSeenAt ? (
+          <p className="text-xs text-zinc-500">{timeAgo(firstSeenAt)}</p>
+        ) : footnote ? (
+          <p className="text-xs text-zinc-500">{footnote}</p>
+        ) : null}
       </div>
     </a>
   );

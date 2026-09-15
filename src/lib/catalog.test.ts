@@ -45,8 +45,16 @@ describe("probeCatalog", () => {
             title: "Cool Shirt",
             handle: "cool-shirt",
             images: [{ src: "//cdn.test/cool.jpg" }],
+            published_at: "2024-01-15T00:00:00.000Z",
+            variants: [{ available: true }],
           },
-          { id: 2, handle: "rad-pants-handle", images: [] },
+          {
+            id: 2,
+            handle: "rad-pants-handle",
+            images: [],
+            created_at: "2024-02-01T00:00:00.000Z",
+            variants: [{ available: false }, { available: false }],
+          },
         ],
       }),
     );
@@ -59,9 +67,11 @@ describe("probeCatalog", () => {
       }),
     );
 
-    const { result } = await probeCatalog(origin);
+    const { result, complete } = await probeCatalog(origin);
 
+    expect(complete).toBe(true);
     expect(result.sourceType).toBe("shopify");
+    expect(result.sourceOrder).toBe("oldest-first");
     expect(result.shopName).toBe("My Cool Shop");
     expect(result.products).toEqual([
       {
@@ -69,22 +79,60 @@ describe("probeCatalog", () => {
         title: "Cool Shirt",
         productUrl: `${origin}/products/cool-shirt`,
         imageUrl: "https://cdn.test/cool.jpg",
+        publishedAt: new Date("2024-01-15T00:00:00.000Z"),
+        sourceIndex: 0,
+        inStock: true,
       },
       {
         externalId: "2",
         title: "rad pants handle",
         productUrl: `${origin}/products/rad-pants-handle`,
         imageUrl: null,
+        publishedAt: new Date("2024-02-01T00:00:00.000Z"),
+        sourceIndex: 1,
+        inStock: false,
       },
     ]);
   });
 
-  it("falls back to the sitemap when Shopify's products.json is unavailable", async () => {
+  it("marks the result incomplete when Shopify pagination runs out of budget", async () => {
+    const home = fakeResponse(`<html><head></head><body></body></html>`);
+    const fullPage = fakeResponse(
+      JSON.stringify({
+        products: Array.from({ length: 250 }, (_, i) => ({
+          id: i + 1,
+          handle: `product-${i + 1}`,
+        })),
+      }),
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/products.json")) {
+          // A small real delay ensures the budget has elapsed by the time
+          // the pagination loop checks it for page 2, without depending on
+          // exact scheduling of a near-zero timeout.
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return fullPage;
+        }
+        return home;
+      }),
+    );
+
+    const { result, complete } = await probeCatalog(origin, { budgetMs: 15 });
+
+    expect(complete).toBe(false);
+    expect(result.sourceType).toBe("shopify");
+    expect(result.products).toHaveLength(250);
+  });
+
+  it("falls back to the sitemap when Shopify's products.json is unavailable, capturing lastmod", async () => {
     const home = fakeResponse(
       `<html><head><meta property="og:site_name" content="Sitemap Shop" /></head></html>`,
     );
     const sitemap = fakeResponse(`<urlset>
-      <url><loc>${origin}/products/aaa?variant=1</loc></url>
+      <url><loc>${origin}/products/aaa?variant=1</loc><lastmod>2024-03-01T00:00:00.000Z</lastmod></url>
       <url><loc>${origin}/products/bbb</loc></url>
       <url><loc>${origin}/about</loc></url>
     </urlset>`);
@@ -98,15 +146,18 @@ describe("probeCatalog", () => {
       }),
     );
 
-    const { result } = await probeCatalog(origin);
+    const { result, complete } = await probeCatalog(origin);
 
+    expect(complete).toBe(true);
     expect(result.sourceType).toBe("sitemap");
+    expect(result.sourceOrder).toBe("oldest-first");
     expect(result.shopName).toBe("Sitemap Shop");
     expect(result.products).toHaveLength(2);
-    expect(result.products.map((p) => p.productUrl).sort()).toEqual([
-      `${origin}/products/aaa`,
-      `${origin}/products/bbb`,
-    ]);
+    const byUrl = new Map(result.products.map((p) => [p.productUrl, p]));
+    expect(byUrl.get(`${origin}/products/aaa`)?.publishedAt).toEqual(
+      new Date("2024-03-01T00:00:00.000Z"),
+    );
+    expect(byUrl.get(`${origin}/products/bbb`)?.publishedAt).toBeNull();
   });
 
   it("falls back to scraping product links from the HTML page as a last resort", async () => {
@@ -127,10 +178,13 @@ describe("probeCatalog", () => {
       }),
     );
 
-    const { result } = await probeCatalog(origin);
+    const { result, complete } = await probeCatalog(origin);
 
+    expect(complete).toBe(true);
     expect(result.sourceType).toBe("html");
+    expect(result.sourceOrder).toBe("newest-first");
     expect(result.shopName).toBe("Shop Test");
+    expect(result.products.every((p) => p.publishedAt === null)).toBe(true);
     expect(result.products.map((p) => p.title).sort()).toEqual(["cool shirt", "rad pants"]);
   });
 
